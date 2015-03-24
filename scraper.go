@@ -37,7 +37,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
+    "time"
+    "regexp"
 )
 
 const (
@@ -54,11 +55,11 @@ var imagePath = flag.String("image_path", "images", "The path to use for images 
 var imageSuffix = flag.String("image_suffix", "-image", "The suffix added after rom name when creating image files.")
 var thumbSuffix = flag.String("thumb_suffix", "-thumb", "The suffix added after rom name when creating thumb files.")
 var romPath = flag.String("rom_path", ".", "The path to use for roms in gamelist.xml.")
-var maxWidth = flag.Uint("max_width", 400, "The max width of images. Larger images will be resized.")
+var maxWidth = flag.Uint("max_width", 375, "The max width of images. Larger images will be resized.")
 var workers = flag.Int("workers", 1, "The number of worker threads used to process roms.")
 var retries = flag.Int("retries", 2, "The number of times to retry a rom on an error.")
 var thumbOnly = flag.Bool("thumb_only", false, "Download the thumbnail for both the image and thumb (faster).")
-var noThumb = flag.Bool("no_thumb", false, "Don't add thumbnails to the gamelist.")
+var noThumb = flag.Bool("no_thumb", true, "Don't add thumbnails to the gamelist.")
 var skipCheck = flag.Bool("skip_check", false, "Skip the check if thegamesdb.net is up.")
 var useCache = flag.Bool("use_cache", false, "Use sselph backup of thegamesdb.")
 var nestedImageDir = flag.Bool("nested_img_dir", false, "Use a nested img directory structure that matches rom structure.")
@@ -159,6 +160,9 @@ type GameXML struct {
 	Publisher   string   `xml:"publisher"`
 	Genre       string   `xml:"genre"`
 	Players     int64    `xml:"players,omitempty"`
+    Region      string   `xml:"region"`
+    Romtype     string   `xml:"romtype"`
+
 }
 
 // GameListXML is the structure used to export the gamelist.xml file.
@@ -254,6 +258,10 @@ func GetGDBGame(r *ROM, ds *datasources) (*GameXML, error) {
 	if len(game.Genres) >= 1 {
 		genre = game.Genres[0]
 	}
+
+    romtype := GetRomType(r)
+    region := GetRegion(r)
+
 	gxml := &GameXML{
 		Path:        fixPath(*romPath + "/" + strings.TrimPrefix(r.Path, *romDir)),
 		ID:          game.ID,
@@ -265,6 +273,8 @@ func GetGDBGame(r *ROM, ds *datasources) (*GameXML, error) {
 		Publisher:   game.Publisher,
 		Genre:       genre,
 		Source:      "theGamesDB.net",
+        Romtype:     romtype,
+        Region:      region,
 	}
 	if iPath != "" {
 		gxml.Image = fixPath(*imagePath + "/" + strings.TrimPrefix(iPath, *imageDir))
@@ -285,6 +295,23 @@ func GetGDBGame(r *ROM, ds *datasources) (*GameXML, error) {
 	return gxml, nil
 }
 
+func GetRomType(r *ROM) (string) {
+    if strings.Contains(r.fName, "Proto") {
+        return "Prototype"
+    }
+    return "Original"
+}
+
+func GetRegion(r *ROM) (string) {
+    re1,_ := regexp.Compile(`\((.+?)\)`)
+    result:= re1.FindStringSubmatch(r.fName)
+
+    if len(result) >  1 {
+        return  result[1]
+    }
+    return ""
+}
+
 func GetOVGDBGame(r *ROM, ds *datasources) (*GameXML, error) {
 	g, err := ds.OVGDB.GetGame(r.Hash)
 	if err != nil {
@@ -300,6 +327,9 @@ func GetOVGDBGame(r *ROM, ds *datasources) (*GameXML, error) {
 		iPath = ""
 	}
 
+    romtype := GetRomType(r)
+    region := GetRegion(r)
+
 	gxml := &GameXML{
 		ID:          g.ReleaseID,
 		Path:        fixPath(*romPath + "/" + strings.TrimPrefix(r.Path, *romDir)),
@@ -310,6 +340,8 @@ func GetOVGDBGame(r *ROM, ds *datasources) (*GameXML, error) {
 		Publisher:   g.Publisher,
 		Genre:       g.Genre,
 		Source:      g.Source,
+        Romtype:     romtype,
+        Region:      region,
 	}
 	if iPath != "" {
 		gxml.Image = fixPath(*imagePath + "/" + strings.TrimPrefix(iPath, *imageDir))
